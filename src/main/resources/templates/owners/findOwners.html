@@ -1,35 +1,21 @@
-<!DOCTYPE html>
-
-<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
-
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Find Owners</title>
+</head>
 <body>
+    <h1>Find Owners</h1>
 
-  <h2 th:text="#{findOwners}">Find Owners</h2>
+    <form action="/owners/find/city" method="get">
+        <label for="city">City:</label>
+        <input type="text" id="citySearch" name="city" placeholder="Enter city">
+        <button type="submit">Search</button>
+        <button type="button" id="clearCitySearch">Clear</button>
+    </form>
 
-  <form th:object="${owner}" th:action="@{/owners}" method="get" class="form-horizontal" id="search-owner-form">
-    <div class="form-group">
-      <div class="control-group" id="lastNameGroup">
-        <label class="col-sm-2 control-label" th:text="#{lastName}">Last name </label>
-        <div class="col-sm-10">
-          <input class="form-control" th:field="*{lastName}" size="30" maxlength="80" />
-          <span class="help-inline">
-            <div th:if="${#fields.hasAnyErrors()}">
-              <p th:each="err : ${#fields.allErrors()}" th:text="${err}">Error</p>
-            </div>
-          </span>
-        </div>
-      </div>
-    </div>
-    <div class="form-group">
-      <div class="col-sm-offset-2 col-sm-10">
-        <button type="submit" class="btn btn-primary" th:text="#{findOwner}">Find Owner</button>
-      </div>
+    <div id="ownerList">
+        <!-- Owner list will be dynamically updated here -->
     </div>
 
-    <a class="btn btn-primary" th:href="@{/owners/new}" th:text="#{addOwner}">Add Owner</a>
-
-  </form>
-
+    <script src="/resources/js/script.js"></script>
 </body>
-
 </html>
