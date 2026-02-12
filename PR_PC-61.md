@@ -1,53 +1,77 @@
 # PC-61: Search by City
 
-## Summary
-- Adds city search in owner find/list views.
-- Adds city autocomplete endpoint (`GET /api/cities?query=...`).
-- Keeps pagination links bookmarkable with `lastName` + `city` URL params.
-- Adds DB city indexes for H2, MySQL, and Postgres.
-- Adds controller tests for city filter, AND logic, autocomplete, and pagination state.
+## Jira
+- Issue: `PC-61`
+- Scope: owner city search + autocomplete + pagination-safe URL filters
 
-## Workflow (as requested)
-1. Assessed Jira description and acceptance criteria for implementation/test readiness.
-2. Created feature branch first: `feature/pc-61-city-search`.
-3. Added tests first (TDD) for search behavior.
-4. Implemented backend + UI changes to satisfy tests and criteria.
-5. Prepared rollout notes and validation notes.
+## Why
+- Users need to filter owners by city quickly, combine this with existing name search, and keep searches bookmarkable.
+- Existing owner search only supported last-name starts-with logic.
 
-## Main changes
+## What changed
+1. Backend search and autocomplete:
+   - Added combined query:
+     - `findByLastNameStartingWithAndCityContainingIgnoreCase(...)`
+   - Added city autocomplete query:
+     - `findDistinctCitiesForAutocomplete(...)`
+   - Added endpoint:
+     - `GET /api/cities?query=...`
+2. Controller behavior:
+   - `/owners` now supports `lastName` + `city` with AND logic.
+   - City filter is case-insensitive substring.
+   - Search state is persisted in model (`searchLastName`, `searchCity`).
+   - If only city filter is used and a single record is found, the app stays on list view (no owner-detail redirect).
+3. UI behavior:
+   - City search field added to find/list screens.
+   - Live filtering while typing (debounced submit).
+   - Autocomplete suggestions via `/api/cities`.
+   - Clear city button added.
+   - Pagination links keep `lastName` and `city` URL params.
+4. Performance:
+   - Added `city` index in H2, MySQL, and Postgres schemas.
+5. i18n:
+   - Added `clearCitySearch` key in:
+     - `messages.properties`
+     - `messages_de.properties`
+   - Button now uses message key in both owner templates.
+
+## Files
 - `src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java`
-  - Combined last-name + city filtering.
-  - Added `GET /api/cities` autocomplete endpoint.
-  - Preserves search state in model (`searchLastName`, `searchCity`).
 - `src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java`
-  - Added:
-    - `findByLastNameStartingWithAndCityContainingIgnoreCase(...)`
-    - `findDistinctCitiesForAutocomplete(...)`
 - `src/main/resources/templates/owners/findOwners.html`
-  - Added city field, datalist autocomplete, live-search JS, clear button.
 - `src/main/resources/templates/owners/ownersList.html`
-  - Added search controls and preserved pagination query params.
-- DB schema indexes:
-  - `src/main/resources/db/h2/schema.sql`
-  - `src/main/resources/db/mysql/schema.sql`
-  - `src/main/resources/db/postgres/schema.sql`
-- Tests:
-  - `src/test/java/org/springframework/samples/petclinic/owner/OwnerControllerTests.java`
-- i18n follow-up:
-  - `src/main/resources/messages/messages.properties`
-  - `src/main/resources/messages/messages_de.properties`
-  - clear button now uses `#{clearCitySearch}` in both templates.
+- `src/main/resources/db/h2/schema.sql`
+- `src/main/resources/db/mysql/schema.sql`
+- `src/main/resources/db/postgres/schema.sql`
+- `src/main/resources/messages/messages.properties`
+- `src/main/resources/messages/messages_de.properties`
+- `src/test/java/org/springframework/samples/petclinic/owner/OwnerControllerTests.java`
 
 ## Acceptance criteria mapping
-- City field in owner search/list: implemented.
-- Autocomplete cities: implemented via `/api/cities`.
-- Live filtering while typing: implemented (debounced submit).
-- Combined with name filter (AND): implemented.
-- Case-insensitive + substring city search: implemented.
-- Clear city filter button: implemented.
-- Pagination maintained with filters: implemented via URL params.
-- Performance optimization: city DB indexes added.
+- Search field for city in owner list: done.
+- Autocomplete for available cities: done (`/api/cities`).
+- Live filtering while entering city: done (debounced submit).
+- Combined with name search (AND): done.
+- Case-insensitive search: done.
+- Substring search (`Berlin` -> `Berlin-Mitte`): done.
+- Clear city button: done.
+- Pagination preserved during search: done (URL params retained).
+- Performance for larger owner sets: addressed via DB index on `city`.
 
-## Validation
-- Automated Java test execution is currently blocked in this environment (no working JDK/JAVA_HOME).
-- The added controller tests are included and ready to run locally/CI with JDK configured.
+## Workflow followed
+1. Assessed issue description sufficiency for implementation and tests.
+2. Created feature branch first: `feature/pc-61-city-search`.
+3. Added tests first (TDD).
+4. Implemented backend and UI to satisfy behavior.
+5. Added documentation/PR notes.
+
+## Testing
+- Added/updated controller tests in `OwnerControllerTests`.
+- Environment limitation:
+  - Java tests could not be executed in this runtime due to missing JDK/JAVA_HOME.
+  - Tests are ready to run in CI or any local environment with JDK configured.
+
+## Risk / impact
+- Main behavior change is owner search flow and list rendering.
+- Redirect semantics intentionally changed for city-only single-result searches to keep list workflow.
+- DB schema index additions are additive and low risk.
