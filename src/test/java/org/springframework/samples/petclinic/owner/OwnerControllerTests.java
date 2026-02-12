@@ -30,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +46,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -87,11 +89,23 @@ class OwnerControllerTests {
 		return george;
 	}
 
+	private Owner ownerWithCity(String firstName, String lastName, String city, int id) {
+		Owner owner = new Owner();
+		owner.setId(id);
+		owner.setFirstName(firstName);
+		owner.setLastName(lastName);
+		owner.setAddress("Address " + id);
+		owner.setCity(city);
+		owner.setTelephone("60855510" + id);
+		return owner;
+	}
+
 	@BeforeEach
 	void setup() {
 
 		Owner george = george();
-		given(this.owners.findByLastNameStartingWith(eq("Franklin"), any(Pageable.class)))
+		given(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq("Franklin"), eq(""),
+				any(Pageable.class)))
 			.willReturn(new PageImpl<>(List.of(george)));
 
 		given(this.owners.findById(TEST_OWNER_ID)).willReturn(Optional.of(george));
@@ -142,14 +156,16 @@ class OwnerControllerTests {
 	@Test
 	void testProcessFindFormSuccess() throws Exception {
 		Page<Owner> tasks = new PageImpl<>(List.of(george(), new Owner()));
-		when(this.owners.findByLastNameStartingWith(anyString(), any(Pageable.class))).thenReturn(tasks);
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(anyString(), anyString(),
+				any(Pageable.class))).thenReturn(tasks);
 		mockMvc.perform(get("/owners?page=1")).andExpect(status().isOk()).andExpect(view().name("owners/ownersList"));
 	}
 
 	@Test
 	void testProcessFindFormByLastName() throws Exception {
 		Page<Owner> tasks = new PageImpl<>(List.of(george()));
-		when(this.owners.findByLastNameStartingWith(eq("Franklin"), any(Pageable.class))).thenReturn(tasks);
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq("Franklin"), eq(""),
+				any(Pageable.class))).thenReturn(tasks);
 		mockMvc.perform(get("/owners?page=1").param("lastName", "Franklin"))
 			.andExpect(status().is3xxRedirection())
 			.andExpect(view().name("redirect:/owners/" + TEST_OWNER_ID));
@@ -158,7 +174,8 @@ class OwnerControllerTests {
 	@Test
 	void testProcessFindFormNoOwnersFound() throws Exception {
 		Page<Owner> tasks = new PageImpl<>(List.of());
-		when(this.owners.findByLastNameStartingWith(eq("Unknown Surname"), any(Pageable.class))).thenReturn(tasks);
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq("Unknown Surname"), eq(""),
+				any(Pageable.class))).thenReturn(tasks);
 		mockMvc.perform(get("/owners?page=1").param("lastName", "Unknown Surname"))
 			.andExpect(status().isOk())
 			.andExpect(model().attributeHasFieldErrors("owner", "lastName"))
@@ -246,6 +263,62 @@ class OwnerControllerTests {
 			.andExpect(status().is3xxRedirection())
 			.andExpect(redirectedUrl("/owners/" + pathOwnerId + "/edit"))
 			.andExpect(flash().attributeExists("error"));
+	}
+
+	@Test
+	void testProcessFindFormByLastNameAndCityAndKeepsSearchStateInModel() throws Exception {
+		Owner madisonFranklin = ownerWithCity("George", "Franklin", "Madison", TEST_OWNER_ID);
+		Owner second = ownerWithCity("Sam", "Franklin", "Madison Heights", 2);
+		Page<Owner> tasks = new PageImpl<>(List.of(madisonFranklin, second));
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq("Franklin"), eq("Madison"),
+				any(Pageable.class))).thenReturn(tasks);
+
+		mockMvc.perform(get("/owners").param("page", "1").param("lastName", "Franklin").param("city", "Madison"))
+			.andExpect(status().isOk())
+			.andExpect(view().name("owners/ownersList"))
+			.andExpect(model().attribute("searchLastName", is("Franklin")))
+			.andExpect(model().attribute("searchCity", is("Madison")));
+	}
+
+	@Test
+	void testProcessFindFormByCityAvoidsRedirectForSingleResult() throws Exception {
+		Owner berlin = ownerWithCity("Anna", "Meyer", "Berlin-Mitte", 5);
+		Page<Owner> tasks = new PageImpl<>(List.of(berlin));
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq(""), eq("berlin"),
+				any(Pageable.class))).thenReturn(tasks);
+
+		mockMvc.perform(get("/owners").param("page", "1").param("city", "berlin"))
+			.andExpect(status().isOk())
+			.andExpect(view().name("owners/ownersList"))
+			.andExpect(model().attribute("searchCity", is("berlin")));
+	}
+
+	@Test
+	void testAutocompleteCities() throws Exception {
+		when(this.owners.findDistinctCitiesForAutocomplete(eq("mad"))).thenReturn(List.of("Madison", "Madrid"));
+
+		mockMvc.perform(get("/api/cities").param("query", "mad"))
+			.andExpect(status().isOk())
+			.andExpect(content().json("[\"Madison\",\"Madrid\"]"));
+
+		verify(this.owners).findDistinctCitiesForAutocomplete("mad");
+	}
+
+	@Test
+	void testProcessFindFormPaginationKeepsFilterParams() throws Exception {
+		List<Owner> ownersPage = new ArrayList<>();
+		for (int i = 1; i <= 6; i++) {
+			ownersPage.add(ownerWithCity("Name" + i, "Doe", "Monona", i));
+		}
+		Page<Owner> tasks = new PageImpl<>(ownersPage.subList(0, 5), Pageable.ofSize(5), 6);
+		when(this.owners.findByLastNameStartingWithAndCityContainingIgnoreCase(eq("Doe"), eq("Mon"),
+				any(Pageable.class))).thenReturn(tasks);
+
+		mockMvc.perform(get("/owners").param("page", "1").param("lastName", "Doe").param("city", "Mon"))
+			.andExpect(status().isOk())
+			.andExpect(view().name("owners/ownersList"))
+			.andExpect(model().attribute("searchLastName", is("Doe")))
+			.andExpect(model().attribute("searchCity", is("Mon")));
 	}
 
 }

@@ -6,6 +6,34 @@
 
   <h2 th:text="#{owners}">Owners</h2>
 
+  <form th:action="@{/owners}" method="get" class="form-horizontal" id="search-owner-list-form">
+    <input type="hidden" name="page" value="1" />
+    <div class="form-group">
+      <div class="control-group" id="listLastNameGroup">
+        <label class="col-sm-2 control-label" th:text="#{lastName}">Last name</label>
+        <div class="col-sm-10">
+          <input class="form-control" name="lastName" th:value="${searchLastName}" size="30" maxlength="80" />
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="control-group" id="listCityGroup">
+        <label class="col-sm-2 control-label" th:text="#{city}">City</label>
+        <div class="col-sm-10">
+          <input class="form-control" id="city-search-input" name="city" th:value="${searchCity}" size="30"
+            maxlength="80" autocomplete="off" list="city-suggestions" />
+          <datalist id="city-suggestions"></datalist>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="col-sm-offset-2 col-sm-10">
+        <button type="submit" class="btn btn-primary" th:text="#{findOwner}">Find Owner</button>
+        <button type="button" class="btn btn-default" id="clear-city-button" th:text="#{clearCitySearch}">Clear city</button>
+      </div>
+    </div>
+  </form>
+
   <table id="owners" class="table table-striped">
     <thead>
       <tr>
@@ -32,30 +60,84 @@
     <span th:text="#{pages}">Pages:</span>
     <span>[</span>
     <span th:each="i: ${#numbers.sequence(1, totalPages)}">
-      <a th:if="${currentPage != i}" th:href="@{'/owners?page=' + ${i}}">[[${i}]]</a>
+      <a th:if="${currentPage != i}" th:href="@{/owners(page=${i},lastName=${searchLastName},city=${searchCity})}">[[${i}]]</a>
       <span th:unless="${currentPage != i}">[[${i}]]</span>
     </span>
     <span>]&nbsp;</span>
     <span>
-      <a th:if="${currentPage > 1}" th:href="@{'/owners?page=1'}" th:title="#{first}" class="fa fa-fast-backward"></a>
+      <a th:if="${currentPage > 1}" th:href="@{/owners(page=1,lastName=${searchLastName},city=${searchCity})}" th:title="#{first}" class="fa fa-fast-backward"></a>
       <span th:unless="${currentPage > 1}" th:title="#{first}" class="fa fa-fast-backward"></span>
     </span>
     <span>
-      <a th:if="${currentPage > 1}" th:href="@{'/owners?page=__${currentPage - 1}__'}" th:title="#{previous}"
+      <a th:if="${currentPage > 1}" th:href="@{/owners(page=${currentPage - 1},lastName=${searchLastName},city=${searchCity})}" th:title="#{previous}"
         class="fa fa-step-backward"></a>
       <span th:unless="${currentPage > 1}" th:title="#{previous}" class="fa fa-step-backward"></span>
     </span>
     <span>
-      <a th:if="${currentPage < totalPages}" th:href="@{'/owners?page=__${currentPage + 1}__'}" th:title="#{next}"
+      <a th:if="${currentPage < totalPages}" th:href="@{/owners(page=${currentPage + 1},lastName=${searchLastName},city=${searchCity})}" th:title="#{next}"
         class="fa fa-step-forward"></a>
       <span th:unless="${currentPage < totalPages}" th:title="#{next}" class="fa fa-step-forward"></span>
     </span>
     <span>
-      <a th:if="${currentPage < totalPages}" th:href="@{'/owners?page=__${totalPages}__'}" th:title="#{last}"
+      <a th:if="${currentPage < totalPages}" th:href="@{/owners(page=${totalPages},lastName=${searchLastName},city=${searchCity})}" th:title="#{last}"
         class="fa fa-fast-forward"></a>
       <span th:unless="${currentPage < totalPages}" th:title="#{last}" class="fa fa-fast-forward"></span>
     </span>
   </div>
+
+  <script th:inline="javascript">
+    (function () {
+      const form = document.getElementById("search-owner-list-form");
+      const cityInput = document.getElementById("city-search-input");
+      const citySuggestions = document.getElementById("city-suggestions");
+      const clearButton = document.getElementById("clear-city-button");
+      if (!form || !cityInput || !citySuggestions || !clearButton) {
+        return;
+      }
+
+      let liveSearchTimer;
+      let autocompleteAbortController;
+
+      function updateSuggestions(items) {
+        citySuggestions.innerHTML = "";
+        for (const item of items || []) {
+          const option = document.createElement("option");
+          option.value = item;
+          citySuggestions.appendChild(option);
+        }
+      }
+
+      function runAutocomplete(query) {
+        if (autocompleteAbortController) {
+          autocompleteAbortController.abort();
+        }
+        autocompleteAbortController = new AbortController();
+        fetch(`/api/cities?query=${encodeURIComponent(query)}`, { signal: autocompleteAbortController.signal })
+          .then((response) => response.ok ? response.json() : [])
+          .then((items) => updateSuggestions(Array.isArray(items) ? items : []))
+          .catch(() => updateSuggestions([]));
+      }
+
+      cityInput.addEventListener("input", () => {
+        const query = cityInput.value.trim();
+        runAutocomplete(query);
+        clearTimeout(liveSearchTimer);
+        liveSearchTimer = setTimeout(() => {
+          form.requestSubmit();
+        }, 350);
+      });
+
+      clearButton.addEventListener("click", () => {
+        cityInput.value = "";
+        updateSuggestions([]);
+        form.requestSubmit();
+      });
+
+      if (cityInput.value && cityInput.value.trim()) {
+        runAutocomplete(cityInput.value.trim());
+      }
+    })();
+  </script>
 </body>
 
 </html>

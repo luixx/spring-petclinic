@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.owner;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.ModelAndView;
 
 import jakarta.validation.Valid;
@@ -49,6 +51,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 class OwnerController {
 
 	private static final String VIEWS_OWNER_CREATE_OR_UPDATE_FORM = "owners/createOrUpdateOwnerForm";
+	private static final int PAGE_SIZE = 5;
 
 	private final OwnerRepository owners;
 
@@ -95,42 +98,65 @@ class OwnerController {
 	public String processFindForm(@RequestParam(defaultValue = "1") int page, Owner owner, BindingResult result,
 			Model model) {
 		// allow parameterless GET request for /owners to return all records
-		String lastName = owner.getLastName();
-		if (lastName == null) {
-			lastName = ""; // empty string signifies broadest possible search
-		}
+		String lastName = normalizeSearchValue(owner.getLastName());
+		String city = normalizeSearchValue(owner.getCity());
 
-		// find owners by last name
-		Page<Owner> ownersResults = findPaginatedForOwnersLastName(page, lastName);
+		// find owners by last name + city
+		Page<Owner> ownersResults = findPaginatedForOwners(page, lastName, city);
 		if (ownersResults.isEmpty()) {
 			// no owners found
-			result.rejectValue("lastName", "notFound", "not found");
+			if (city.isEmpty()) {
+				result.rejectValue("lastName", "notFound", "not found");
+			}
+			else {
+				result.rejectValue("city", "notFound", "not found");
+			}
 			return "owners/findOwners";
 		}
 
-		if (ownersResults.getTotalElements() == 1) {
+		if (ownersResults.getTotalElements() == 1 && city.isEmpty()) {
 			// 1 owner found
 			owner = ownersResults.iterator().next();
 			return "redirect:/owners/" + owner.getId();
 		}
 
 		// multiple owners found
-		return addPaginationModel(page, model, ownersResults);
+		return addPaginationModel(page, model, ownersResults, lastName, city);
 	}
 
-	private String addPaginationModel(int page, Model model, Page<Owner> paginated) {
+	@GetMapping("/api/cities")
+	@ResponseBody
+	public List<String> autocompleteCities(@RequestParam(name = "query", defaultValue = "") String query) {
+		String normalizedQuery = normalizeSearchValue(query);
+		return this.owners.findDistinctCitiesForAutocomplete(normalizedQuery)
+			.stream()
+			.filter(Objects::nonNull)
+			.map(String::trim)
+			.filter(value -> !value.isEmpty())
+			.distinct()
+			.limit(10)
+			.collect(Collectors.toList());
+	}
+
+	private String addPaginationModel(int page, Model model, Page<Owner> paginated, String lastName, String city) {
 		List<Owner> listOwners = paginated.getContent();
 		model.addAttribute("currentPage", page);
 		model.addAttribute("totalPages", paginated.getTotalPages());
 		model.addAttribute("totalItems", paginated.getTotalElements());
 		model.addAttribute("listOwners", listOwners);
+		model.addAttribute("searchLastName", lastName);
+		model.addAttribute("searchCity", city);
 		return "owners/ownersList";
 	}
 
-	private Page<Owner> findPaginatedForOwnersLastName(int page, String lastname) {
-		int pageSize = 5;
-		Pageable pageable = PageRequest.of(page - 1, pageSize);
-		return owners.findByLastNameStartingWith(lastname, pageable);
+	private Page<Owner> findPaginatedForOwners(int page, String lastName, String city) {
+		int safePage = Math.max(page, 1);
+		Pageable pageable = PageRequest.of(safePage - 1, PAGE_SIZE);
+		return owners.findByLastNameStartingWithAndCityContainingIgnoreCase(lastName, city, pageable);
+	}
+
+	private String normalizeSearchValue(String value) {
+		return value == null ? "" : value.trim();
 	}
 
 	@GetMapping("/owners/{ownerId}/edit")

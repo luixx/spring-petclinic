@@ -15,11 +15,15 @@
  */
 package org.springframework.samples.petclinic.owner;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Repository class for <code>Owner</code> domain objects. All method names are compliant
@@ -43,6 +47,35 @@ public interface OwnerRepository extends JpaRepository<Owner, Integer> {
 	 * found)
 	 */
 	Page<Owner> findByLastNameStartingWith(String lastName, Pageable pageable);
+
+	/**
+	 * Retrieve {@link Owner}s matching both last name prefix and city substring using
+	 * case-insensitive city filtering.
+	 * @param lastName Value to search by last name prefix
+	 * @param city Value to search as city substring
+	 * @param pageable pagination configuration
+	 * @return a page of matching owners
+	 */
+	Page<Owner> findByLastNameStartingWithAndCityContainingIgnoreCase(String lastName, String city, Pageable pageable);
+
+	/**
+	 * Returns distinct city names for autocomplete.
+	 * @param query city query substring
+	 * @param pageable used to cap result size
+	 * @return list of distinct city names ordered ascending
+	 */
+	@Query("""
+			select distinct o.city
+			from Owner o
+			where o.city is not null
+			  and lower(o.city) like lower(concat('%', :query, '%'))
+			order by o.city asc
+			""")
+	List<String> findDistinctCitiesForAutocomplete(@Param("query") String query, Pageable pageable);
+
+	default List<String> findDistinctCitiesForAutocomplete(String query) {
+		return findDistinctCitiesForAutocomplete(query, PageRequest.of(0, 10));
+	}
 
 	/**
 	 * Retrieve an {@link Owner} from the data store by id.
